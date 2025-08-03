@@ -1,0 +1,28 @@
+{
+  "name": "c-store",
+  "version": "1.0.0",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "benchmark": "node benchmark.js",
+    "benchmark:light": "node benchmark.js 10 50",
+    "benchmark:heavy": "node benchmark.js 100 500 1000"
+  },
+  "keywords": ["express", "nodejs", "api", "c-store"],
+  "author": "",
+  "license": "ISC",
+  "description": "A Node.js Express API server for C-Store application",
+  "dependencies": {
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10",
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0",
+    "@types/jest": "^29.5.12"
+  }
+}
