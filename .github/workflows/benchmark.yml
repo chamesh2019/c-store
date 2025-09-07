@@ -1,0 +1,22 @@
+name: Benchmark
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * *"   # nightly UTC
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+      - run: npm ci
+      - name: Start server
+        run: |
+          npm start &
+          n=0
+          until curl -sf http://localhost:3000/health || [ $n -ge 15 ]; do n=$((n+1)); sleep 1; done
+      - name: Run benchmark (light)
+        run: node benchmark.js 10 50

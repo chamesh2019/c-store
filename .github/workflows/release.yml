@@ -1,0 +1,49 @@
+name: Release & Deploy
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+      - run: npm ci --only=production
+      - name: Login GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: Build & Push
+        run: |
+          IMAGE=ghcr.io/${{ github.repository }}:$(echo $GITHUB_REF_NAME)
+          docker build -t $IMAGE .
+          docker push $IMAGE
+  deploy-staging:
+    needs: package
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Deploy placeholder
+        run: echo "Deploy to staging here (replace with real command)"
+  smoke-test:
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test health endpoint
+        run: |
+          echo "Invoke staging URL"
+          # curl https://staging-your-app/health
+  promote-prod:
+    needs: smoke-test
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://your-production-url
+    steps:
+      - name: Promote placeholder
+        run: echo "Deploy to production here"

@@ -7,8 +7,12 @@
     "dev": "nodemon app.js",
     "benchmark": "node benchmark.js",
     "benchmark:light": "node benchmark.js 10 50",
-  "benchmark:heavy": "node benchmark.js 100 500 1000",
-  "test": "SET NODE_ENV=test&& mocha \"tests/**/*.test.js\" --timeout 5000"
+    "benchmark:heavy": "node benchmark.js 100 500 1000",
+    "test": "cross-env NODE_ENV=test mocha \"tests/**/*.test.js\" --timeout 5000",
+    "test:ci": "cross-env NODE_ENV=test mocha \"tests/**/*.test.js\" --reporter spec --timeout 5000",
+    "coverage": "c8 npm run test:ci",
+    "lint": "eslint . --ext .js",
+    "format": "prettier -w ."
   },
   "keywords": [
     "express",
@@ -27,6 +31,10 @@
     "chai": "^6.0.1",
     "mocha": "^11.7.2",
     "nodemon": "^3.1.10",
-    "supertest": "^7.1.4"
+    "supertest": "^7.1.4",
+    "c8": "^9.1.0",
+    "cross-env": "^7.0.3",
+    "eslint": "^9.9.0",
+    "prettier": "^3.3.3"
   }
 }
