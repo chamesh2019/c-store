@@ -33,7 +33,7 @@ app.get('/health', (req, res) => {
 app.use('/api', require('./routes/api'));
 
 // Error handling middleware
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
     console.error(err.stack);
     res.status(500).json({
         error: 'Something went wrong!',

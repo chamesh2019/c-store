@@ -146,7 +146,7 @@ class ApiBenchmark {
             try {
                 await this.setValue('benchmark', `get_test_${i}`, `value_${i}`);
             } catch (error) {
-                console.log(`Warning: Failed to populate data for get_test_${i}`);
+                console.log(`Warning: Failed to populate data for get_test_${i} - ${error.message}`);
             }
         }
         console.log('✅ Test data populated');
@@ -190,6 +190,7 @@ class ApiBenchmark {
             const response = await this.makeRequest(options);
             return response.statusCode === 200;
         } catch (error) {
+            console.error(`Failed to check server health: ${error.message}`);
             return false;
         }
     }
