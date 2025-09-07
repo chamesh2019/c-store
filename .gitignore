@@ -19,7 +19,6 @@ coverage/
 *.log
 *.tsbuildinfo
 # Optional:
-package-lock.json
 yarn.lock
 .pnpm-lock.yaml
 
