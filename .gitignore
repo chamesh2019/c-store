@@ -23,4 +23,5 @@ package-lock.json
 yarn.lock
 .pnpm-lock.yaml
 
-demo_requests
+demo_requests/
+lib/data.json

@@ -1,248 +1,139 @@
 const request = require('supertest');
+const { expect } = require('chai');
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
+
+// Force test env before requiring app
+process.env.NODE_ENV = 'test';
 const app = require('../app');
+const dbPath = path.join(__dirname, '..', 'lib', 'data.db');
+let dbInstance;
 
-describe('API Routes', () => {
-    describe('GET /api/:namespace', () => {
-        it('should return welcome message for any namespace', async () => {
-            const response = await request(app)
-                .get('/api/users')
-                .expect(200);
+// Helper to wipe database between tests (delete rows to avoid file lock issues on Windows)
+const resetDb = (done) => {
+	if (!dbInstance) {
+		dbInstance = new sqlite3.Database(dbPath, (err) => {
+			if (err) return done(err);
+			dbInstance.run('DELETE FROM key_value_store', [], (delErr) => done(delErr));
+		});
+	} else {
+		dbInstance.run('DELETE FROM key_value_store', [], (delErr) => done(delErr));
+	}
+};
 
-            expect(response.body).toEqual({
-                message: 'Welcome to the C-Store API',
-                status: 'API is running successfully!'
-            });
-        });
+describe('C-Store API', () => {
+		beforeEach((done) => {
+			resetDb(done);
+		});
 
-        it('should work with different namespace names', async () => {
-            const response = await request(app)
-                .get('/api/products')
-                .expect(200);
+	describe('Root & Health', () => {
+		it('GET / should return welcome payload', async () => {
+			const res = await request(app).get('/');
+			expect(res.status).to.equal(200);
+			expect(res.body).to.include.keys(['message', 'status', 'endpoints']);
+			expect(res.body.endpoints).to.have.keys(['health', 'api']);
+		});
 
-            expect(response.body.message).toBe('Welcome to the C-Store API');
-        });
-    });
+		it('GET /health should return OK status', async () => {
+			const res = await request(app).get('/health');
+			expect(res.status).to.equal(200);
+			expect(res.body.status).to.equal('OK');
+			expect(res.body).to.have.property('uptime');
+		});
+	});
 
-    describe('POST /api/:namespace/:id', () => {
-        it('should set a value successfully', async () => {
-            const testValue = { name: 'John Doe', age: 30 };
-            
-            const response = await request(app)
-                .post('/api/users/john')
-                .send({ value: testValue })
-                .expect(200);
+	describe('Namespaces listing', () => {
+		it('GET /api should return empty namespaces initially', async () => {
+			const res = await request(app).get('/api');
+			expect(res.status).to.equal(200);
+			expect(res.body.namespaces).to.be.an('array').that.is.empty;
+			expect(res.body.count).to.equal(0);
+		});
 
-            expect(response.body).toEqual({
-                message: 'Value set successfully'
-            });
-        });
+		it('GET /api should list namespaces after inserts', async () => {
+			await request(app).post('/api/users/1').send({ value: { name: 'Alice' } });
+			await request(app).post('/api/orders/100').send({ value: { total: 10 } });
 
-        it('should handle different data types', async () => {
-            await request(app)
-                .post('/api/test/string')
-                .send({ value: 'hello world' })
-                .expect(200);
+			const res = await request(app).get('/api');
+			expect(res.status).to.equal(200);
+			expect(res.body.namespaces).to.have.members(['orders', 'users']);
+			expect(res.body.count).to.equal(2);
+		});
+	});
 
-            await request(app)
-                .post('/api/test/number')
-                .send({ value: 42 })
-                .expect(200);
+	describe('Namespace operations', () => {
+		it('GET /api/:namespace should return empty object for new namespace', async () => {
+			const res = await request(app).get('/api/products');
+			expect(res.status).to.equal(200);
+			expect(res.body.namespace).to.equal('products');
+			expect(res.body.values).to.deep.equal({});
+			expect(res.body.count).to.equal(0);
+		});
 
-            await request(app)
-                .post('/api/test/boolean')
-                .send({ value: true })
-                .expect(200);
-        });
+		it('POST then GET namespace should include inserted keys', async () => {
+			await request(app).post('/api/products/p1').send({ value: { price: 10 } });
+			await request(app).post('/api/products/p2').send({ value: { price: 15 } });
+			const res = await request(app).get('/api/products');
+			expect(res.status).to.equal(200);
+			expect(res.body.count).to.equal(2);
+			expect(res.body.values).to.have.keys(['p1', 'p2']);
+		});
+	});
 
-        it('should handle missing value in request body', async () => {
-            const response = await request(app)
-                .post('/api/users/john')
-                .send({})
-                .expect(200);
+	describe('Key operations', () => {
+		it('POST /api/:namespace/:id should store value and GET should retrieve it', async () => {
+			const payload = { name: 'Widget', price: 42 };
+			const setRes = await request(app).post('/api/catalog/w1').send({ value: payload });
+			expect(setRes.status).to.equal(200);
+			expect(setRes.body.message).to.match(/Value set/);
 
-            expect(response.body.message).toBe('Value set successfully');
-        });
-    });
+			const getRes = await request(app).get('/api/catalog/w1');
+			expect(getRes.status).to.equal(200);
+			expect(getRes.body.value).to.deep.equal(payload);
+		});
 
-    describe('GET /api/:namespace/:id', () => {
-        beforeEach(async () => {
-            // Set up test data
-            await request(app)
-                .post('/api/users/john')
-                .send({ value: { name: 'John Doe', age: 30 } });
-            
-            await request(app)
-                .post('/api/users/jane')
-                .send({ value: { name: 'Jane Smith', age: 25 } });
-        });
+			it('GET non-existent key should return empty object (no value property)', async () => {
+				const res = await request(app).get('/api/unknown/doesNotExist');
+				expect(res.status).to.equal(200);
+				expect(res.body).to.be.an('object').that.is.empty;
+				expect(res.body).to.not.have.property('value');
+			});
 
-        it('should get a specific value', async () => {
-            const response = await request(app)
-                .get('/api/users/john')
-                .expect(200);
+		it('DELETE /api/:namespace/:id should remove key', async () => {
+			await request(app).post('/api/tmp/a').send({ value: 1 });
+			const delRes = await request(app).delete('/api/tmp/a');
+			expect(delRes.status).to.equal(200);
+			expect(delRes.body.message).to.match(/deleted successfully/);
 
-            expect(response.body).toEqual({
-                value: { name: 'John Doe', age: 30 }
-            });
-        });
+			const getRes = await request(app).get('/api/tmp/a');
+			expect(getRes.status).to.equal(200);
+			expect(getRes.body.value).to.equal(undefined);
+		});
+	});
 
-        it('should return undefined for non-existent key', async () => {
-            const response = await request(app)
-                .get('/api/users/nonexistent')
-                .expect(200);
+	describe('Delete namespace', () => {
+		it('DELETE /api/:namespace should remove all keys in namespace', async () => {
+			await request(app).post('/api/group/k1').send({ value: 1 });
+			await request(app).post('/api/group/k2').send({ value: 2 });
+			const before = await request(app).get('/api/group');
+			expect(before.body.count).to.equal(2);
 
-            expect(response.body).toEqual({
-                value: undefined
-            });
-        });
+			const delNs = await request(app).delete('/api/group');
+			expect(delNs.status).to.equal(200);
+			expect(delNs.body.message).to.match(/Namespace 'group' deleted successfully/);
 
-        it('should handle different namespaces', async () => {
-            await request(app)
-                .post('/api/products/laptop')
-                .send({ value: { name: 'Gaming Laptop', price: 1200 } });
+			const after = await request(app).get('/api/group');
+			expect(after.body.count).to.equal(0);
+			expect(after.body.values).to.deep.equal({});
+		});
+	});
 
-            const response = await request(app)
-                .get('/api/products/laptop')
-                .expect(200);
-
-            expect(response.body.value).toEqual({
-                name: 'Gaming Laptop',
-                price: 1200
-            });
-        });
-    });
-
-    describe('DELETE /api/:namespace/:id', () => {
-        beforeEach(async () => {
-            // Set up test data
-            await request(app)
-                .post('/api/users/john')
-                .send({ value: { name: 'John Doe', age: 30 } });
-            
-            await request(app)
-                .post('/api/users/jane')
-                .send({ value: { name: 'Jane Smith', age: 25 } });
-        });
-
-        it('should delete a value successfully', async () => {
-            const response = await request(app)
-                .delete('/api/users/john')
-                .expect(200);
-
-            expect(response.body).toEqual({
-                message: 'Value deleted successfully'
-            });
-
-            // Verify the value is deleted
-            const getResponse = await request(app)
-                .get('/api/users/john')
-                .expect(200);
-
-            expect(getResponse.body.value).toBeUndefined();
-        });
-
-        it('should handle deleting non-existent values', async () => {
-            const response = await request(app)
-                .delete('/api/users/nonexistent')
-                .expect(200);
-
-            expect(response.body.message).toBe('Value deleted successfully');
-        });
-
-        it('should not affect other values in the same namespace', async () => {
-            await request(app)
-                .delete('/api/users/john')
-                .expect(200);
-
-            // Jane should still exist
-            const response = await request(app)
-                .get('/api/users/jane')
-                .expect(200);
-
-            expect(response.body.value).toEqual({
-                name: 'Jane Smith',
-                age: 25
-            });
-        });
-    });
-
-    describe('Integration tests', () => {
-        it('should handle complete CRUD operations', async () => {
-            // Create
-            await request(app)
-                .post('/api/products/laptop')
-                .send({ value: { name: 'Gaming Laptop', price: 1200, stock: 5 } })
-                .expect(200);
-
-            // Read
-            const readResponse = await request(app)
-                .get('/api/products/laptop')
-                .expect(200);
-
-            expect(readResponse.body.value).toEqual({
-                name: 'Gaming Laptop',
-                price: 1200,
-                stock: 5
-            });
-
-            // Update (overwrite)
-            await request(app)
-                .post('/api/products/laptop')
-                .send({ value: { name: 'Gaming Laptop Pro', price: 1500, stock: 3 } })
-                .expect(200);
-
-            const updatedResponse = await request(app)
-                .get('/api/products/laptop')
-                .expect(200);
-
-            expect(updatedResponse.body.value).toEqual({
-                name: 'Gaming Laptop Pro',
-                price: 1500,
-                stock: 3
-            });
-
-            // Delete
-            await request(app)
-                .delete('/api/products/laptop')
-                .expect(200);
-
-            const deletedResponse = await request(app)
-                .get('/api/products/laptop')
-                .expect(200);
-
-            expect(deletedResponse.body.value).toBeUndefined();
-        });
-
-        it('should handle multiple namespaces simultaneously', async () => {
-            // Set data in different namespaces
-            await request(app)
-                .post('/api/users/admin')
-                .send({ value: { role: 'administrator', permissions: ['read', 'write'] } });
-
-            await request(app)
-                .post('/api/config/theme')
-                .send({ value: { color: 'dark', font: 'roboto' } });
-
-            await request(app)
-                .post('/api/cache/session123')
-                .send({ value: { userId: 'admin', expires: '2024-12-31' } });
-
-            // Verify all namespaces work independently
-            const userResponse = await request(app)
-                .get('/api/users/admin')
-                .expect(200);
-
-            const configResponse = await request(app)
-                .get('/api/config/theme')
-                .expect(200);
-
-            const cacheResponse = await request(app)
-                .get('/api/cache/session123')
-                .expect(200);
-
-            expect(userResponse.body.value.role).toBe('administrator');
-            expect(configResponse.body.value.color).toBe('dark');
-            expect(cacheResponse.body.value.userId).toBe('admin');
-        });
-    });
+	describe('Error & 404 handling', () => {
+		it('Returns 404 for unknown route', async () => {
+			const res = await request(app).get('/some/missing/path');
+			expect(res.status).to.equal(404);
+			expect(res.body).to.include.keys(['error', 'path']);
+		});
+	});
 });
+

@@ -49,9 +49,12 @@ app.use((req, res) => {
     });
 });
 
-app.listen(PORT, () => {
-    console.log(`🚀 Server is running on http://localhost:${PORT}`);
-    console.log(`📁 Environment: ${process.env.NODE_ENV || 'development'}`);
-});
+// Only start the server if not in a test environment so tests can import the app without opening a port
+if (process.env.NODE_ENV !== 'test') {
+    app.listen(PORT, () => {
+        console.log(`🚀 Server is running on http://localhost:${PORT}`);
+        console.log(`📁 Environment: ${process.env.NODE_ENV || 'development'}`);
+    });
+}
 
 module.exports = app;
